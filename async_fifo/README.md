@@ -166,11 +166,6 @@ Example Output:
 
 ▶️ How to Run
 
-Using ModelSim:
-- vlib work
-- vlog src/*.v tb/*.v
-- vsim work.fifo_test
-- run -all
 
 ---
 
