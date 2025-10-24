@@ -53,11 +53,115 @@ The testbench (`fifo_tb.v`) automatically:
 - Applies asynchronous resets and waits for synchronization  
 - Performs deterministic writes and reads  
 - Fills and empties the FIFO to check `FULL` and `EMPTY` flags  
-- Inserts **random resets and operations** to stress-test the design  
+- Inserts **random resets and operations** to stress-test the design
 
-Example Output
-...
+  <img width="1654" height="522" alt="image" src="https://github.com/user-attachments/assets/ae5c3560-76bf-4a25-8f90-38d1efbe02c0" />
 
+
+Example Output:
+### 🧾 Example Simulation Output
+
+```text
+=== FIFO TEST (port-driven TB) ===
+
+[63000] Reset released
+[175000] Reset sync complete
+
+[175000] Writing 10 values...
+[185000] >>> WRITE request: 0
+[195000] WRITE OK: 0
+[205000] >>> WRITE request: 1
+[215000] WRITE OK: 1
+[225000] >>> WRITE request: 2
+[235000] WRITE OK: 2
+[245000] >>> WRITE request: 3
+[255000] WRITE OK: 3
+[265000] >>> WRITE request: 4
+[275000] WRITE OK: 4
+[285000] >>> WRITE request: 5
+[295000] WRITE OK: 5
+[305000] >>> WRITE request: 6
+[315000] WRITE OK: 6
+[325000] >>> WRITE request: 7
+[335000] WRITE OK: 7
+[345000] >>> WRITE request: 8
+[355000] WRITE OK: 8
+[365000] >>> WRITE request: 9
+[375000] WRITE OK: 9
+
+[375000] Reading 5 values...
+[385000] >>> READ request
+[413000] <<< READ DATA: 0
+[413000] >>> READ request
+[441000] <<< READ DATA: 1
+[441000] >>> READ request
+[469000] <<< READ DATA: 2
+[469000] >>> READ request
+[497000] <<< READ DATA: 3
+[497000] >>> READ request
+[511000] Filling until FULL...
+[515000] >>> WRITE request: 101
+[525000] WRITE OK: 101
+[525000] <<< READ DATA: 4
+[535000] >>> WRITE request: 64
+[545000] WRITE OK: 64
+[555000] >>> WRITE request: 69
+[565000] WRITE OK: 69
+[575000] >>> WRITE request: 167
+[585000] WRITE OK: 167
+[595000] >>> WRITE request: 234
+[605000] WRITE OK: 234
+[615000] >>> WRITE request: 104
+[625000] WRITE OK: 104
+[635000] >>> WRITE request: 227
+[645000] WRITE OK: 227
+[655000] >>> WRITE request: 58
+[665000] WRITE OK: 58
+[675000] >>> WRITE request: 187
+[685000] WRITE OK: 187
+[695000] >>> WRITE request: 41
+[705000] WRITE OK: 41
+[715000] >>> WRITE request: 242
+[725000] WRITE OK: 242
+[735000] >>> WRITE skipped (FULL)
+[745000] FIFO FULL detected
+
+[745000] Emptying FIFO...
+[749000] >>> READ request
+[777000] <<< READ DATA: 5
+[777000] >>> READ request
+[805000] <<< READ DATA: 6
+[805000] >>> READ request
+[833000] <<< READ DATA: 7
+[833000] >>> READ request
+[861000] <<< READ DATA: 8
+[861000] >>> READ request
+[889000] <<< READ DATA: 9
+[889000] >>> READ request
+[917000] <<< READ DATA: 101
+[917000] >>> READ request
+[945000] <<< READ DATA: 64
+[945000] >>> READ request
+[973000] <<< READ DATA: 69
+[973000] >>> READ request
+[1001000] <<< READ DATA: 167
+[1001000] >>> READ request
+[1029000] <<< READ DATA: 234
+[1029000] >>> READ request
+[1057000] <<< READ DATA: 104
+[1057000] >>> READ request
+[1085000] <<< READ DATA: 227
+[1085000] >>> READ request
+[1113000] <<< READ DATA: 58
+[1113000] >>> READ request
+[1141000] <<< READ DATA: 187
+[1141000] >>> READ request
+[1169000] <<< READ DATA: 41
+[1169000] >>> READ request
+[1197000] <<< READ DATA: 242
+[1197000] >>> READ request
+[1211000] FIFO EMPTY detected
+```
 ---
 
 ▶️ How to Run
