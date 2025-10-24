@@ -1,6 +1,6 @@
 
 
-```markdown
+
 🧠 Asynchronous FIFO (Dual-Clock) – Verilog Implementation
 
 A fully parameterized asynchronous FIFO architecture implemented in Verilog, featuring Gray-coded pointers, clock-domain synchronization, and a self-contained testbench with randomized stimuli.  
@@ -83,4 +83,4 @@ run -all
 🧑‍💻 Author
 Sebastian Matusa
 
-````
+
