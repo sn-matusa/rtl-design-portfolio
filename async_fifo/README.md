@@ -26,6 +26,43 @@ Key Features:
 
 ---
 
+🧩 Ports and parameters description
+
+The `async_fifo_top` module represents the **top-level integration** of all submodules implementing the asynchronous FIFO.  
+It connects pointer handlers, synchronization stages, full/empty detection logic, and dual-port memory into a complete dual-clock FIFO system.
+
+Parameters
+
+| Parameter | Type | Default | Description |
+|------------|------|----------|-------------|
+| `DATA_WIDTH` | integer | 8 | Defines the bit-width of the data bus. Determines the width of `data_in` and `data_out`. |
+| `ADDR_WIDTH` | integer | 4 | Determines the address pointer size. FIFO depth = 2^ADDR_WIDTH. |
+
+Ports
+
+| Port | Dir. | Width | Clock Domain | Description |
+|------|------|--------|---------------|--------------|
+| `wr_clk` | Input | 1 | Write | Write-side clock signal controlling all write domain logic. |
+| `rd_clk` | Input | 1 | Read | Read-side clock signal controlling all read domain logic. |
+| `rst_n` | Input | 1 | Global | Asynchronous active-low reset. Deassertion is synchronized within each domain via `reset_sync` module. |
+| `wrreq` | Input | 1 | Write | External write request; valid only when `wr_full = 0`. |
+| `rdreq` | Input | 1 | Read | External read request; valid only when `rd_empty = 0`. |
+| `data_in` | Input | DATA_WIDTH | Write | Parallel input data to be written into FIFO memory. |
+| `data_out` | Output | DATA_WIDTH | Read | Parallel output data read from FIFO memory. |
+| `wr_full` | Output | 1 | Write | Indicates FIFO is full. Write operations are ignored while asserted. |
+| `rd_empty` | Output | 1 | Read | Indicates FIFO is empty. Read operations are ignored while asserted. |
+
+---
+
+🧠 Internal Operation Summary
+- The FIFO depth is defined by `ADDR_WIDTH`, e.g., for `ADDR_WIDTH = 4`, depth = 16 entries.  
+- Gray-coded pointers are used for synchronization across `wr_clk` and `rd_clk` domains.  
+- `wrreq` and `rdreq` are automatically masked when FIFO is full/empty.  
+- `wr_full` and `rd_empty` are registered outputs, synchronized to their respective domains.  
+- The module uses `reset_sync` blocks to ensure safe reset release for both clock domains.  
+
+---
+
 🧩 Modules Description
 
 | Module               | Description                                                                                                                                                                                                                 |
@@ -162,11 +199,6 @@ Example Output:
 [1197000] >>> READ request
 [1211000] FIFO EMPTY detected
 ```
----
-
-▶️ How to Run
-
-
 ---
 
 📊 Expected Behavior
