@@ -1,8 +1,25 @@
-// ============================================================================
-// AXI4-Lite Master Module
-// Uses Mealy-type FSMs with separate next-state and output logic
-// Supports single outstanding write and read transactions
-// ============================================================================
+/******************************************************************************
+*
+* Module:       axi_lite_master
+* Author:       Sebastian Matusa
+* Created:      Oct 2025
+*
+* Description:
+*   AXI-Lite master interface module.
+*   Generates valid AXI-Lite read and write transactions based on simple
+*   user control signals (wr_req / rd_req).
+*
+*   Implements Mealy-style FSMs for both READ and WRITE channels:
+*     - Address phase
+*     - Data phase
+*     - Response handling
+*
+*   Supports single outstanding transaction per channel (AXI-Lite spec).
+*
+* Revision History:
+*   Rev 1.0 - Initial version (Sebastian Matusa, Oct 2025)
+*
+******************************************************************************/
 
 module axi_lite_master #(
     parameter ADDR_WIDTH = 32,   // AXI address bus width
@@ -148,14 +165,13 @@ module axi_lite_master #(
     end
     
     // =========================================================================
-    // WRITE FSM - output logic
+    // WRITE FSM - output logic (combinational)
     // =========================================================================
     always @(*) begin
         // Default outputs inactive
         awvalid = 1'b0;
         wvalid  = 1'b0;
         bready  = 1'b0;
-        // wr_done is a synchronous pulse generated on the B handshake
         
         case (wr_state)
             WR_BOTH: begin
@@ -177,15 +193,12 @@ module axi_lite_master #(
             WR_RESP: begin
                 // Ready to accept response from slave
                 bready  = 1'b1;
-                // wr_done will be asserted synchronously when the B handshake
-                // (bvalid && bready) is sampled on the rising edge of aclk.
             end
             
             default: begin
                 awvalid = 1'b0;
                 wvalid  = 1'b0;
                 bready  = 1'b0;
-                wr_done = 1'b0;
             end
         endcase
     end
@@ -269,13 +282,12 @@ module axi_lite_master #(
     end
     
     // =========================================================================
-    // READ FSM - output logic
+    // READ FSM - output logic (combinational)
     // =========================================================================
     always @(*) begin
         // Default outputs inactive
         arvalid = 1'b0;
         rready  = 1'b0;
-        // rd_done is generated synchronously on the R handshake
         
         case (rd_state)
             RD_ADDR: begin
@@ -284,18 +296,27 @@ module axi_lite_master #(
             end
             
             RD_DATA: begin
-                // Ready to accept data; generate rd_done when RVALID = 1
+                // Ready to accept data from slave
                 rready  = 1'b1;
-                // rd_done will be asserted synchronously when the R handshake
-                // (rvalid && rready) is sampled on the rising edge.
             end
             
             default: begin
                 arvalid = 1'b0;
                 rready  = 1'b0;
-                rd_done = 1'b0;
             end
         endcase
+    end
+    
+    // =========================================================================
+    // READ done pulse (synchronous)
+    // Generate a 1-cycle pulse when the read data handshake occurs
+    // (rvalid && rready sampled on the rising edge).
+    // =========================================================================
+    always @(posedge aclk or negedge aresetn) begin
+        if (!aresetn)
+            rd_done <= 1'b0;
+        else
+            rd_done <= (rvalid && rready);
     end
     
     // =========================================================================
@@ -324,4 +345,3 @@ module axi_lite_master #(
     end
 
 endmodule
-
