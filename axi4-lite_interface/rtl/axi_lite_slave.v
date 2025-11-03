@@ -23,74 +23,84 @@
 ******************************************************************************/
 
 module axi_lite_slave #(
-    parameter ADDR_WIDTH = 32,
-    parameter DATA_WIDTH = 32
+    parameter ADDR_WIDTH = 32,   // AXI address bus width
+    parameter DATA_WIDTH = 32    // AXI data bus width (must be multiple of 8)
 )(
-    input                       aclk,
-    input                       aresetn,
-
-    // ---------------- AXI WRITE ADDRESS ----------------
-    input   [ADDR_WIDTH-1:0]   awaddr,
-    input                       awvalid,
-    output reg                  awready,
-
-    // ---------------- AXI WRITE DATA -------------------
-    input   [DATA_WIDTH-1:0]   wdata,
-    input   [DATA_WIDTH/8-1:0] wstrb,
-    input                       wvalid,
-    output reg                  wready,
-
-    // ---------------- AXI WRITE RESPONSE ---------------
-    output reg [1:0]           bresp,
-    output reg                  bvalid,
-    input                       bready,
-
-    // ---------------- AXI READ ADDRESS -----------------
-    input   [ADDR_WIDTH-1:0]   araddr,
-    input                       arvalid,
-    output reg                  arready,
-
-    // ---------------- AXI READ DATA --------------------
-    output reg [DATA_WIDTH-1:0] rdata,
-    output reg [1:0]            rresp,
-    output reg                  rvalid,
-    input                       rready,
-
-    // ---------------- USER WRITE IF --------------------
-    output reg [ADDR_WIDTH-1:0]    user_wr_addr,
-    output reg [DATA_WIDTH-1:0]    user_wr_data,
-    output reg [DATA_WIDTH/8-1:0]  user_wr_strb,
-    output reg                     user_wr_en,
-    input      [1:0]               user_wr_resp,
-
-    // ---------------- USER READ IF ---------------------
-    output reg [ADDR_WIDTH-1:0]    user_rd_addr,
-    output reg                     user_rd_en,
-    input      [DATA_WIDTH-1:0]    user_rd_data,
-    input      [1:0]               user_rd_resp
+    input                           aclk,       // Global AXI clock
+    input                           aresetn,    // Asynchronous active-low reset
+    
+    // ------------------------------------------------------------------------
+    // AXI4-Lite Write Address Channel
+    // ------------------------------------------------------------------------
+    input [ADDR_WIDTH-1:0]          awaddr,     // Write address from master
+    input                           awvalid,    // Address valid handshake from master
+    output reg                      awready,    // Slave ready to accept address
+    
+    // ------------------------------------------------------------------------
+    // AXI4-Lite Write Data Channel
+    // ------------------------------------------------------------------------
+    input [DATA_WIDTH-1:0]          wdata,      // Write data from master
+    input [DATA_WIDTH/8-1:0]        wstrb,      // Byte strobes for write data
+    input                           wvalid,     // Write data valid handshake from master
+    output reg                      wready,     // Slave ready to accept write data
+    
+    // ------------------------------------------------------------------------
+    // AXI4-Lite Write Response Channel
+    // ------------------------------------------------------------------------
+    output reg [1:0]                bresp,      // Write response (OKAY/SLVERR)
+    output reg                      bvalid,     // Write response valid
+    input                           bready,     // Master accepts response
+    
+    // ------------------------------------------------------------------------
+    // AXI4-Lite Read Address Channel
+    // ------------------------------------------------------------------------
+    input [ADDR_WIDTH-1:0]          araddr,     // Read address from master
+    input                           arvalid,    // Read address valid
+    output reg                      arready,    // Slave ready to accept read address
+    
+    // ------------------------------------------------------------------------
+    // AXI4-Lite Read Data Channel
+    // ------------------------------------------------------------------------
+    output reg [DATA_WIDTH-1:0]     rdata,      // Data returned to master
+    output reg [1:0]                rresp,      // Read response (OKAY/SLVERR)
+    output reg                      rvalid,     // Read data valid
+    input                           rready,     // Master ready to accept read data
+    
+    // ------------------------------------------------------------------------
+    // User register file interface
+    // ------------------------------------------------------------------------
+    output reg [ADDR_WIDTH-1:0]     user_wr_addr,   // Write address to user logic
+    output reg [DATA_WIDTH-1:0]     user_wr_data,   // Write data to user logic
+    output reg [DATA_WIDTH/8-1:0]   user_wr_strb,   // Byte strobes
+    output reg                      user_wr_en,     // Write enable (1 clk pulse)
+    input [1:0]                     user_wr_resp,   // Write response from user
+    
+    output reg [ADDR_WIDTH-1:0]     user_rd_addr,   // Read address to user logic
+    output reg                      user_rd_en,     // Read enable pulse
+    input [DATA_WIDTH-1:0]          user_rd_data,   // Read data from user
+    input [1:0]                     user_rd_resp    // Read response from user
 );
 
     // =========================================================================
-    // FSM state encoding (AXI-Lite write allows AW/W in any order)
+    // Internal enums and state registers
     // =========================================================================
-    localparam W_IDLE = 2'b00;
-    localparam W_ADDR = 2'b01;
-    localparam W_DATA = 2'b10;
-    localparam W_RESP = 2'b11;
+    localparam W_IDLE = 2'b00;   // No write pending
+    localparam W_ADDR = 2'b01;   // Got data first, wait address
+    localparam W_DATA = 2'b10;   // Got address first, wait data
+    localparam W_RESP = 2'b11;   // Both received, issue response
 
     reg [1:0] w_state, w_state_next;
 
-    // Read FSM (simple ? one beat read)
-    localparam R_IDLE = 2'b00;
-    localparam R_DATA = 2'b10;
+    localparam R_IDLE = 2'b00;   // Waiting for ARVALID
+    localparam R_DATA = 2'b10;   // Returning read data to master
 
     reg [1:0] r_state, r_state_next;
 
-    // Internal registered read response (for timing alignment)
+    // Response registered so it's stable in R_DATA state
     reg [1:0] user_rd_resp_int;
 
     // =========================================================================
-    // WRITE FSM ? state register
+    // WRITE FSM ? State register
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
@@ -100,14 +110,14 @@ module axi_lite_slave #(
     end
 
     // =========================================================================
-    // WRITE FSM ? next state logic
-    // Decides when address/data are received in any order
+    // WRITE FSM ? Next state logic (Mealy)
     // =========================================================================
     always @(*) begin
-        w_state_next = w_state;
+        w_state_next = w_state;  
 
         case (w_state)
             W_IDLE: begin
+                // Accept address first, data first, or both
                 if (awvalid && wvalid)
                     w_state_next = W_RESP;
                 else if (awvalid)
@@ -117,16 +127,19 @@ module axi_lite_slave #(
             end
 
             W_ADDR: begin
+                // Got data first ? wait for address
                 if (awvalid)
                     w_state_next = W_RESP;
             end
 
             W_DATA: begin
+                // Got address first ? wait for data
                 if (wvalid)
                     w_state_next = W_RESP;
             end
 
             W_RESP: begin
+                // Complete when master accepts BRESP
                 if (bready)
                     w_state_next = W_IDLE;
             end
@@ -134,49 +147,41 @@ module axi_lite_slave #(
     end
 
     // =========================================================================
-    // WRITE channel output / handshake logic
+    // WRITE FSM ? Output logic
     // =========================================================================
     always @(*) begin
-        awready = 1'b0;
-        wready  = 1'b0;
-        bvalid  = 1'b0;
-        bresp   = user_wr_resp;
+        awready = 0;
+        wready  = 0;
+        bvalid  = 0;
+        bresp   = user_wr_resp; // Pass internal response to AXI
 
         case (w_state)
             W_IDLE: begin
-                if (awvalid && wvalid) begin
-                    awready = 1'b1;
-                    wready  = 1'b1;
-                end else if (awvalid) begin
-                    awready = 1'b1;
-                end else if (wvalid) begin
-                    wready = 1'b1;
-                end
+                // Accept address, data, or both
+                if (awvalid) awready = 1;
+                if (wvalid)  wready  = 1;
             end
 
-            W_ADDR: if (awvalid) awready = 1'b1;
-            W_DATA: if (wvalid)  wready  = 1'b1;
+            W_ADDR: if (awvalid) awready = 1;
+            W_DATA: if (wvalid)  wready  = 1;
 
             W_RESP: begin
-                bvalid = 1'b1;
-                bresp  = user_wr_resp;
+                bvalid = 1; // Response valid to master
             end
         endcase
     end
 
     // =========================================================================
-    // WRITE address/data latch
+    // Capture write address/data on handshake
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn) begin
             user_wr_addr <= 0;
             user_wr_data <= 0;
             user_wr_strb <= 0;
-        end
-        else begin
+        end else begin
             if (awvalid && awready)
                 user_wr_addr <= awaddr;
-
             if (wvalid && wready) begin
                 user_wr_data <= wdata;
                 user_wr_strb <= wstrb;
@@ -185,19 +190,21 @@ module axi_lite_slave #(
     end
 
     // =========================================================================
-    // WRITE enable pulse ? 1 cycle strobe to register file
+    // Generate write enable pulse when both address and data were received
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
-            user_wr_en <= 1'b0;
+            user_wr_en <= 0;
         else
-            user_wr_en <= ((w_state == W_IDLE && awvalid && wvalid) ||
-                           (w_state == W_ADDR && awvalid) ||
-                           (w_state == W_DATA && wvalid));
+            user_wr_en <= (
+                  (w_state == W_IDLE && awvalid && wvalid) || 
+                  (w_state == W_ADDR && awvalid) ||
+                  (w_state == W_DATA && wvalid)
+            );
     end
 
     // =========================================================================
-    // READ FSM ? state register
+    // READ FSM ? State register
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
@@ -207,7 +214,7 @@ module axi_lite_slave #(
     end
 
     // =========================================================================
-    // READ FSM ? next state logic
+    // READ FSM ? Next state logic
     // =========================================================================
     always @(*) begin
         r_state_next = r_state;
@@ -219,39 +226,32 @@ module axi_lite_slave #(
     end
 
     // =========================================================================
-    // READ handshake + response logic
+    // READ FSM ? Output logic
     // =========================================================================
     always @(*) begin
         case (r_state)
             R_IDLE: begin
-                arready = 1'b1;   // Accept new read address
-                rvalid  = 1'b0;
-                rresp   = 2'b00;  // Default OKAY until data arrives
+                arready = 1;    // Ready to accept address
+                rvalid  = 0;
+                rresp   = 2'b00;
             end
 
             R_DATA: begin
-                arready = 1'b0;
-
-                // Only assert RVALID once user read response latched
-                if (user_rd_resp_int == 2'b11) begin
-                    rvalid = 1'b1;
-                    rresp  = user_rd_resp_int;
-                end else begin
-                    rvalid = 1'b0;
-                    rresp  = 2'b00;
-                end
+                arready = 0;
+                rvalid  = (user_rd_resp_int == 2'b11); // Signal valid data only if user marked ready/OK
+                rresp   = user_rd_resp_int;            // Forward response to AXI
             end
 
             default: begin
-                arready = 1'b0;
-                rvalid  = 1'b0;
+                arready = 0;
+                rvalid  = 0;
                 rresp   = 2'b00;
             end
         endcase
     end
 
     // =========================================================================
-    // READ address capture
+    // Capture read address on AR handshake
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
@@ -261,18 +261,17 @@ module axi_lite_slave #(
     end
 
     // =========================================================================
-    // READ request pulse to register file
+    // Generate read enable pulse for register file
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
-            user_rd_en <= 1'b0;
+            user_rd_en <= 0;
         else
             user_rd_en <= (arvalid && arready);
     end
 
     // =========================================================================
-    // Capture read data from user logic every cycle
-    // (AXI-Lite read latency modeled externally)
+    // Capture read data each cycle (simple reg-file model)
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
@@ -282,7 +281,7 @@ module axi_lite_slave #(
     end
 
     // =========================================================================
-    // Capture user read response and delay it (aligns with data)
+    // Register read response so it's available in R_DATA state
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
