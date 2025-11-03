@@ -17,9 +17,6 @@
 *   Decodes addresses and provides clean separation between bus protocol logic
 *   and local memory/register access logic.
 *
-* Revision History:
-*   Rev 1.0 - Initial version (Sebastian Matusa, Oct 2025)
-*
 ******************************************************************************/
 
 module axi_lite_slave #(
@@ -47,60 +44,65 @@ module axi_lite_slave #(
     // ------------------------------------------------------------------------
     // AXI4-Lite Write Response Channel
     // ------------------------------------------------------------------------
-    output reg [1:0]                bresp,      // Write response (OKAY/SLVERR)
-    output reg                      bvalid,     // Write response valid
-    input                           bready,     // Master accepts response
+    output reg [1:0]                bresp,      // Write response to master
+    output reg                      bvalid,     // Write response valid to master
+    input                           bready,     // Master ready to accept write response
     
     // ------------------------------------------------------------------------
     // AXI4-Lite Read Address Channel
     // ------------------------------------------------------------------------
     input [ADDR_WIDTH-1:0]          araddr,     // Read address from master
-    input                           arvalid,    // Read address valid
+    input                           arvalid,    // Address valid handshake from master
     output reg                      arready,    // Slave ready to accept read address
     
     // ------------------------------------------------------------------------
     // AXI4-Lite Read Data Channel
     // ------------------------------------------------------------------------
-    output reg [DATA_WIDTH-1:0]     rdata,      // Data returned to master
-    output reg [1:0]                rresp,      // Read response (OKAY/SLVERR)
-    output reg                      rvalid,     // Read data valid
+    output reg [DATA_WIDTH-1:0]     rdata,      // Read data to master
+    output reg [1:0]                rresp,      // Read response to master
+    output reg                      rvalid,     // Read data valid to master
     input                           rready,     // Master ready to accept read data
     
     // ------------------------------------------------------------------------
-    // User register file interface
+    // User-side register interface (internal memory bus)
     // ------------------------------------------------------------------------
-    output reg [ADDR_WIDTH-1:0]     user_wr_addr,   // Write address to user logic
-    output reg [DATA_WIDTH-1:0]     user_wr_data,   // Write data to user logic
-    output reg [DATA_WIDTH/8-1:0]   user_wr_strb,   // Byte strobes
-    output reg                      user_wr_en,     // Write enable (1 clk pulse)
+    output reg [ADDR_WIDTH-1:0]     user_wr_addr,   // Latched write address
+    output reg [DATA_WIDTH-1:0]     user_wr_data,   // Latched write data
+    output reg [DATA_WIDTH/8-1:0]   user_wr_strb,   // Byte strobes for partial write
+    output reg                      user_wr_en,     // 1-cycle write strobe
     input [1:0]                     user_wr_resp,   // Write response from user
     
-    output reg [ADDR_WIDTH-1:0]     user_rd_addr,   // Read address to user logic
-    output reg                      user_rd_en,     // Read enable pulse
+    output reg [ADDR_WIDTH-1:0]     user_rd_addr,   // Latched read address
+    output reg                      user_rd_en,     // 1-cycle read strobe
     input [DATA_WIDTH-1:0]          user_rd_data,   // Read data from user
     input [1:0]                     user_rd_resp    // Read response from user
 );
 
     // =========================================================================
-    // Internal enums and state registers
+    // Write FSM
+    // Supports out-of-order arrival of AW & W
     // =========================================================================
-    localparam W_IDLE = 2'b00;   // No write pending
-    localparam W_ADDR = 2'b01;   // Got data first, wait address
-    localparam W_DATA = 2'b10;   // Got address first, wait data
-    localparam W_RESP = 2'b11;   // Both received, issue response
-
-    reg [1:0] w_state, w_state_next;
-
+    localparam W_IDLE = 2'b00;   // Waiting for AW and/or W
+    localparam W_ADDR = 2'b01;   // W accepted first, waiting for AW
+    localparam W_DATA = 2'b10;   // AW accepted first, waiting for W
+    localparam W_RESP = 2'b11;   // Send BRESP
+    
+    reg [1:0] w_state;
+    reg [1:0] w_state_next;
+    
+    // =========================================================================
+    // Read FSM
+    // =========================================================================
     localparam R_IDLE = 2'b00;   // Waiting for ARVALID
-    localparam R_DATA = 2'b10;   // Returning read data to master
+    localparam R_DATA = 2'b10;   // Returning RDATA
+    
+    reg [1:0] r_state;
+    reg [1:0] r_state_next;
 
-    reg [1:0] r_state, r_state_next;
-
-    // Response registered so it's stable in R_DATA state
-    reg [1:0] user_rd_resp_int;
+    reg [1:0] user_rd_resp_int;  // Registered user read response
 
     // =========================================================================
-    // WRITE FSM ? State register
+    // Write FSM State Register
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
@@ -108,16 +110,16 @@ module axi_lite_slave #(
         else
             w_state <= w_state_next;
     end
-
+    
     // =========================================================================
-    // WRITE FSM ? Next state logic (Mealy)
+    // Write FSM Next-State Logic
     // =========================================================================
     always @(*) begin
-        w_state_next = w_state;  
+        w_state_next = w_state;
 
         case (w_state)
             W_IDLE: begin
-                // Accept address first, data first, or both
+                // Handle all AW/W arrival permutations
                 if (awvalid && wvalid)
                     w_state_next = W_RESP;
                 else if (awvalid)
@@ -125,86 +127,111 @@ module axi_lite_slave #(
                 else if (wvalid)
                     w_state_next = W_ADDR;
             end
-
+            
             W_ADDR: begin
-                // Got data first ? wait for address
+                // Waiting for AW handshake
                 if (awvalid)
                     w_state_next = W_RESP;
             end
-
+            
             W_DATA: begin
-                // Got address first ? wait for data
+                // Waiting for W handshake
                 if (wvalid)
                     w_state_next = W_RESP;
             end
-
+            
             W_RESP: begin
-                // Complete when master accepts BRESP
+                // Wait until master accepts response
                 if (bready)
                     w_state_next = W_IDLE;
             end
+            
+            default: w_state_next = W_IDLE;
         endcase
     end
-
+    
     // =========================================================================
-    // WRITE FSM ? Output logic
+    // Write FSM Output Logic
+    // Drives awready, wready, bvalid, bresp
     // =========================================================================
     always @(*) begin
-        awready = 0;
-        wready  = 0;
-        bvalid  = 0;
-        bresp   = user_wr_resp; // Pass internal response to AXI
-
+        // Default inactive
+        awready = 1'b0;
+        wready  = 1'b0;
+        bvalid  = 1'b0;
+        bresp   = user_wr_resp;  // Forward user response (OKAY/SLVERR)
+        
         case (w_state)
             W_IDLE: begin
-                // Accept address, data, or both
-                if (awvalid) awready = 1;
-                if (wvalid)  wready  = 1;
+                // Accept both or either
+                if (awvalid && wvalid) begin
+                    awready = 1'b1;
+                    wready  = 1'b1;
+                end else if (awvalid) begin
+                    awready = 1'b1;
+                end else if (wvalid) begin
+                    wready  = 1'b1;
+                end
             end
-
-            W_ADDR: if (awvalid) awready = 1;
-            W_DATA: if (wvalid)  wready  = 1;
-
+            
+            W_ADDR: begin
+                if (awvalid)
+                    awready = 1'b1;
+            end
+            
+            W_DATA: begin
+                if (wvalid)
+                    wready = 1'b1;
+            end
+            
             W_RESP: begin
-                bvalid = 1; // Response valid to master
+                // Drive BRESP to master
+                bvalid = 1'b1;
+                bresp  = user_wr_resp;
+            end
+            
+            default: begin
+                awready = 1'b0;
+                wready  = 1'b0;
+                bvalid  = 1'b0;
+                bresp   = 2'b00;
             end
         endcase
     end
-
+    
     // =========================================================================
-    // Capture write address/data on handshake
+    // Capture AWADDR / WDATA when handshakes occur
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn) begin
-            user_wr_addr <= 0;
-            user_wr_data <= 0;
-            user_wr_strb <= 0;
+            user_wr_addr <= {ADDR_WIDTH{1'b0}};
+            user_wr_data <= {DATA_WIDTH{1'b0}};
+            user_wr_strb <= {(DATA_WIDTH/8){1'b0}};
         end else begin
             if (awvalid && awready)
-                user_wr_addr <= awaddr;
+                user_wr_addr <= awaddr; // Latch write address
+            
             if (wvalid && wready) begin
-                user_wr_data <= wdata;
-                user_wr_strb <= wstrb;
+                user_wr_data <= wdata;  // Latch write data
+                user_wr_strb <= wstrb;  // Capture byte enables
             end
         end
     end
-
+    
     // =========================================================================
-    // Generate write enable pulse when both address and data were received
+    // Generate 1-cycle write strobe when both AW & W are received
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
-            user_wr_en <= 0;
+            user_wr_en <= 1'b0;
         else
-            user_wr_en <= (
-                  (w_state == W_IDLE && awvalid && wvalid) || 
-                  (w_state == W_ADDR && awvalid) ||
-                  (w_state == W_DATA && wvalid)
-            );
+            user_wr_en <= ((w_state == W_IDLE && awvalid && wvalid) ||
+                           (w_state == W_ADDR && awvalid) ||
+                           (w_state == W_DATA && wvalid));
     end
-
+    
     // =========================================================================
-    // READ FSM ? State register
+    // READ FSM State Register
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
@@ -212,82 +239,101 @@ module axi_lite_slave #(
         else
             r_state <= r_state_next;
     end
-
+    
     // =========================================================================
-    // READ FSM ? Next state logic
+    // READ FSM Next-State Logic
     // =========================================================================
     always @(*) begin
         r_state_next = r_state;
-
+        
         case (r_state)
-            R_IDLE: if (arvalid) r_state_next = R_DATA;
-            R_DATA: if (rready && rvalid) r_state_next = R_IDLE;
+            R_IDLE: begin
+                if (arvalid)
+                    r_state_next = R_DATA;
+            end
+            
+            R_DATA: begin
+                // Return to idle only when master accepts RVALID
+                if (rready && rvalid)
+                    r_state_next = R_IDLE;
+            end
+            
+            default: r_state_next = R_IDLE;
         endcase
     end
-
+    
     // =========================================================================
-    // READ FSM ? Output logic
+    // READ FSM Output Logic
+    // Drives ARREADY, RVALID, RRESP
     // =========================================================================
     always @(*) begin
         case (r_state)
             R_IDLE: begin
-                arready = 1;    // Ready to accept address
-                rvalid  = 0;
-                rresp   = 2'b00;
+                arready = 1'b1;   // Ready to accept address
+                rvalid  = 1'b0;   // No data yet
+                rresp   = 2'b00;  // Default response
             end
-
+            
             R_DATA: begin
-                arready = 0;
-                rvalid  = (user_rd_resp_int == 2'b11); // Signal valid data only if user marked ready/OK
-                rresp   = user_rd_resp_int;            // Forward response to AXI
+                arready = 1'b0;   // Address phase done
+                
+                // Only assert RVALID if user logic posted a valid response
+                if (user_rd_resp_int == 2'b11) begin
+                    rvalid = 1'b1;
+                    rresp  = user_rd_resp_int;
+                end else begin
+                    rvalid = 1'b0; // Waiting for valid data
+                    rresp  = 2'b00;
+                end
             end
-
+            
             default: begin
-                arready = 0;
-                rvalid  = 0;
+                arready = 1'b0;
+                rvalid  = 1'b0;
                 rresp   = 2'b00;
             end
         endcase
     end
-
+    
     // =========================================================================
-    // Capture read address on AR handshake
+    // Capture read address when AR handshake occurs
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
-            user_rd_addr <= 0;
+            user_rd_addr <= {ADDR_WIDTH{1'b0}};
         else if (arvalid && arready)
             user_rd_addr <= araddr;
     end
-
+    
     // =========================================================================
-    // Generate read enable pulse for register file
+    // Generate 1-cycle read enable pulse
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
-            user_rd_en <= 0;
+            user_rd_en <= 1'b0;
         else
             user_rd_en <= (arvalid && arready);
     end
-
+    
     // =========================================================================
-    // Capture read data each cycle (simple reg-file model)
+    // Capture read data from user logic every cycle
+    // (User design must present valid data in time)
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
-            rdata <= 0;
-        else
-            rdata <= user_rd_data;
+            rdata <= {DATA_WIDTH{1'b0}};
+        else 
+            rdata <= user_rd_data; // Direct register-stage into AXI output flop
     end
 
     // =========================================================================
-    // Register read response so it's available in R_DATA state
+    // Register read response from user logic
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
             user_rd_resp_int <= 2'b00;
         else
-            user_rd_resp_int <= user_rd_resp;
+            user_rd_resp_int <= user_rd_resp; // Move into internal flop
     end
 
 endmodule
