@@ -48,7 +48,7 @@ The top-level module connects the master, slave, and register file. It exposes a
 | user_rd_done | Output | 1-bit | Read completion indicator. Pulses high for one cycle when the read transaction is completed and data is available. |
 | user_rd_resp | Output | 2-bit | Read response code (AXI RRESP). `2’b00 = OKAY`, `2’b10 = SLVERR` (e.g., invalid address). |
 
-> **Note:** The `axi_system_top` internally generates and wires all the standard AXI4-Lite bus signals (`awaddr`, `awvalid`, `wdata`, `wstrb`, `bresp`, `araddr`, `rdata`, etc.) between the master and slave sub-modules. These internal signals follow the AXI protocol but are not directly exposed at the top level.
+> **Note:** The `axi_system_top` internally generates and wires all the standard AXI4-Lite bus signals (`awaddr`, `awvalid`, `wdata`, `wstrb`, `bresp`, `araddr`, `rdata`, etc.) between the master and slave. These internal signals follow the AXI protocol but are not directly exposed at the top level.
 
 ---
 
