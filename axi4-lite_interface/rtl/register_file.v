@@ -1,5 +1,3 @@
-`timescale 1ns/1ps
-
 /******************************************************************************
 * Module:       register_file
 * Author:       Sebastian Matusa
@@ -71,3 +69,4 @@ module register_file #(
     end
 
 endmodule
+
