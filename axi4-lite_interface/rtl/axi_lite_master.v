@@ -109,115 +109,99 @@ module axi_lite_master #(
     
     // =========================================================================
     // WRITE FSM - state register
-    // =========================================================================
+    // ============================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
-            wr_state <= WR_IDLE;       // Reset to idle
+            wr_state <= WR_IDLE;       // Return to idle on reset
         else
-            wr_state <= wr_state_next; // State transition
+            wr_state <= wr_state_next; // Move to next write state
     end
     
     // =========================================================================
     // WRITE FSM - next-state logic
+    // Controls AWVALID/WVALID sequencing per AXI-Lite rules
     // =========================================================================
     always @(*) begin
-        wr_state_next = wr_state;      // Default stay in current state
+        wr_state_next = wr_state;      // Default: remain in current state
         
         case (wr_state)
             WR_IDLE: begin
-                // Start new transaction when user asserts wr_req
+                // Start write when user asserts wr_req
                 if (wr_req)
-                    wr_state_next = WR_BOTH;
+                    wr_state_next = WR_BOTH;   // Issue address + data together initially
             end
             
             WR_BOTH: begin
-                // Both AW and W are driven; check handshake combinations
+                // Drive both AW and W; transitions depend on handshake timing
                 if (awready && wready)
-                    wr_state_next = WR_RESP; // Both accepted, wait for response
+                    wr_state_next = WR_RESP;   // Both accepted ? wait response
                 else if (awready)
-                    wr_state_next = WR_DATA; // Address accepted first
+                    wr_state_next = WR_DATA;   // Only address accepted so far
                 else if (wready)
-                    wr_state_next = WR_ADDR; // Data accepted first
+                    wr_state_next = WR_ADDR;   // Only data accepted so far
             end
             
             WR_ADDR: begin
-                // Only address valid; when accepted, proceed to response
-                // NOTE: This assumes W was already accepted.
+                // Continue sending address until slave accepts it
                 if (awready)
-                    wr_state_next = WR_RESP;
+                    wr_state_next = WR_RESP;   // All write info delivered
             end
             
             WR_DATA: begin
-                // Only data valid; when accepted, proceed to response
-                // NOTE: This assumes AW was already accepted.
+                // Continue sending data until slave accepts it
                 if (wready)
-                    wr_state_next = WR_RESP;
+                    wr_state_next = WR_RESP;   // All write info delivered
             end
             
             WR_RESP: begin
-                // Wait for valid response from slave
+                // Wait until write response arrives from slave
                 if (bvalid)
-                    wr_state_next = WR_IDLE;
+                    wr_state_next = WR_IDLE;   // Write completed
             end
-            
-            default: wr_state_next = WR_IDLE;
         endcase
     end
     
     // =========================================================================
-    // WRITE FSM - output logic (combinational)
+    // Write channel control signals
+    // Drive handshakes based on FSM state
     // =========================================================================
     always @(*) begin
-        // Default outputs inactive
         awvalid = 1'b0;
         wvalid  = 1'b0;
         bready  = 1'b0;
         
         case (wr_state)
             WR_BOTH: begin
-                // Drive both address and data simultaneously
-                awvalid = 1'b1;
-                wvalid  = 1'b1;
+                awvalid = 1'b1; // Present address
+                wvalid  = 1'b1; // Present data
             end
             
             WR_ADDR: begin
-                // Continue asserting AWVALID until AWREADY = 1
-                awvalid = 1'b1;
+                awvalid = 1'b1; // Continue asserting AWVALID
             end
             
             WR_DATA: begin
-                // Continue asserting WVALID until WREADY = 1
-                wvalid  = 1'b1;
+                wvalid  = 1'b1; // Continue asserting WVALID
             end
             
             WR_RESP: begin
-                // Ready to accept response from slave
-                bready  = 1'b1;
-            end
-            
-            default: begin
-                awvalid = 1'b0;
-                wvalid  = 1'b0;
-                bready  = 1'b0;
+                bready  = 1'b1; // Accept BRESP when valid
             end
         endcase
     end
 
     // =========================================================================
-    // WRITE done pulse (synchronous)
-    // Generate a 1-cycle pulse when the write response handshake occurs
-    // (bvalid && bready sampled on the rising edge).
+    // WRITE done pulse ? 1 cycle handshake pulse after BRESP
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
             wr_done <= 1'b0;
         else
-            wr_done <= (bvalid && bready);
+            wr_done <= (bvalid && bready);  // Single-cycle completion strobe
     end
     
     // =========================================================================
-    // WRITE request capture
-    // Captures address, data, and byte strobes when a new transaction starts.
+    // Latch write address/data/strobes when transaction begins
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn) begin
@@ -225,21 +209,20 @@ module axi_lite_master #(
             wdata  <= {DATA_WIDTH{1'b0}};
             wstrb  <= {(DATA_WIDTH/8){1'b0}};
         end else if (wr_req && wr_state == WR_IDLE) begin
-            awaddr <= wr_addr;   // Latch write address
-            wdata  <= wr_data;   // Latch write data
-            wstrb  <= wr_strb;   // Latch write strobes
+            awaddr <= wr_addr;  // Capture write address
+            wdata  <= wr_data;  // Capture write payload
+            wstrb  <= wr_strb;  // Capture byte enables
         end
     end
     
     // =========================================================================
-    // WRITE response capture
-    // Captures BRESP when both BVALID and BREADY are asserted.
+    // Latch BRESP from slave
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
-            wr_resp <= 2'b00;          // Default response on reset
+            wr_resp <= 2'b00;
         else if (bvalid && bready)
-            wr_resp <= bresp;           // Store response from slave
+            wr_resp <= bresp;   // Store write response
     end
     
     // =========================================================================
@@ -247,100 +230,97 @@ module axi_lite_master #(
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
-            rd_state <= RD_IDLE;        // Reset to idle
+            rd_state <= RD_IDLE;
         else
-            rd_state <= rd_state_next;  // State transition
+            rd_state <= rd_state_next;
     end
     
     // =========================================================================
     // READ FSM - next-state logic
     // =========================================================================
     always @(*) begin
-        rd_state_next = rd_state;       // Default stay in current state
-        
+        rd_state_next = rd_state;
+
         case (rd_state)
             RD_IDLE: begin
-                // Start new read transaction
+                // User requests read
                 if (rd_req)
-                    rd_state_next = RD_ADDR;
+                    rd_state_next = RD_ADDR;    // Send address
             end
             
             RD_ADDR: begin
-                // Wait until slave accepts address
+                // Wait for slave to accept AR
                 if (arready)
-                    rd_state_next = RD_DATA;
+                    rd_state_next = RD_DATA;    // Expect data next
             end
             
             RD_DATA: begin
-                // Wait for valid read data from slave
+                // Wait for valid read data
                 if (rvalid)
-                    rd_state_next = RD_IDLE;
+                    rd_state_next = RD_IDLE;    // Read complete
             end
-            
-            default: rd_state_next = RD_IDLE;
         endcase
     end
     
     // =========================================================================
-    // READ FSM - output logic (combinational)
+    // Read channel handshake control
     // =========================================================================
     always @(*) begin
-        // Default outputs inactive
+        // Safe defaults
         arvalid = 1'b0;
         rready  = 1'b0;
-        
+
         case (rd_state)
+            RD_IDLE: begin
+                // keep defaults (no address, not ready)
+            end
+
             RD_ADDR: begin
-                // Drive ARVALID until ARREADY = 1
-                arvalid = 1'b1;
+                arvalid = 1'b1; // Assert ARVALID until ARREADY
+                rready  = 1'b1; // Pre-assert RREADY to catch data ASAP
             end
             
             RD_DATA: begin
-                // Ready to accept data from slave
-                rready  = 1'b1;
-            end
-            
-            default: begin
-                arvalid = 1'b0;
-                rready  = 1'b0;
+                arvalid = 1'b0; // Address already issued
+                rready  = 1'b1; // Keep ready high until RVALID arrives
             end
         endcase
     end
     
     // =========================================================================
-    // READ done pulse (synchronous)
-    // Generate a 1-cycle pulse when the read data handshake occurs
-    // (rvalid && rready sampled on the rising edge).
+    // Read done pulse ? delayed to ensure rd_data is already captured
     // =========================================================================
+    reg r_done_d;
     always @(posedge aclk or negedge aresetn) begin
-        if (!aresetn)
-            rd_done <= 1'b0;
-        else
-            rd_done <= (rvalid && rready);
+        if (!aresetn) begin
+            rd_done  <= 1'b0;
+            r_done_d <= 1'b0;
+        end else begin
+            r_done_d <= (rvalid && rready); // Detect handshake
+            rd_done  <= r_done_d;           // Delay 1 cycle for data stability
+        end
     end
     
     // =========================================================================
-    // READ address capture
-    // Captures ARADDR when new read request starts.
+    // Capture read address on transaction start
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
             araddr <= {ADDR_WIDTH{1'b0}};
         else if (rd_req && rd_state == RD_IDLE)
-            araddr <= rd_addr;          // Latch read address
+            araddr <= rd_addr; // Latch address at read request
     end
     
     // =========================================================================
-    // READ data & response capture
-    // Captures RDATA and RRESP when both RVALID and RREADY are asserted.
+    // Capture read data/response when handshake completes
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn) begin
             rd_data <= {DATA_WIDTH{1'b0}};
             rd_resp <= 2'b00;
         end else if (rvalid && rready) begin
-            rd_data <= rdata;           // Store read data
-            rd_resp <= rresp;           // Store response code
+            rd_data <= rdata;   // Capture read data
+            rd_resp <= rresp;   // Capture read response
         end
     end
 
