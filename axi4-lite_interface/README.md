@@ -248,43 +248,6 @@ Simple synchronous RAM with byte mask writes. Provides OKAY/SLVERR.
 
 ## Simulation/Testbench
 
-The project includes a self-checking testbench module (`axi_lite_tb`) that instantiates the AXI-Lite system and generates a series of read/write transactions to verify its functionality. The testbench uses the simplified user interface of the `axi_system_top` (master interface) to drive transactions, rather than toggling AXI signals manually. This mimics how a typical user logic or processor would interact with the AXI master:
-
-### Instantiation
-The testbench instantiates the top-level AXI system (master + slave + register file). In the provided testbench, this instance is created (as `axi_lite_test`) with the default parameter configuration (32-bit address/data, 16 registers). The testbench connects to the `user_wr_*` and `user_rd_*` ports of the AXI system, effectively acting as the user logic that makes read/write requests.
-
-### Operation Sequence
-
-#### 1. Single Write
-Write a known value to a register (e.g. write `0xABCD1234` to address `0x00000000`).  
-The testbench sets `wr_req` high with the address and data, then waits for the `user_wr_done` pulse indicating the write completed.  
-The `wr_resp` is checked (expected OKAY) once the write is done.
-
-#### 2. Single Read
-Read back from the same address (`0x00000000`).  
-The testbench asserts `rd_req` with the address and waits for the `user_rd_done` pulse.  
-It then captures `user_rd_data` and prints it, verifying that it matches the value written in the previous step.
-
-#### 3. Multiple Writes
-Writes to multiple addresses (`0x04`, `0x08`, `0x0C`) with values  
-`0x11111111`, `0x22222222`, `0x33333333`.  
-Each write is issued by pulsing `wr_req` with the new address and data and waiting for `wr_done`.
-
-#### 4. Multiple Reads
-Reads back from `0x04`, `0x08`, `0x0C` sequentially.  
-Prints values and compares — verifying the register file integrity.
-
-#### 5. Completion
-If all matches, prints:  
-
-A timeout mechanism stops the simulation if any transaction fails to complete (detects deadlocks/protocol issues).
-
-### AXI Interface Verification
-Even though the testbench drives user-level signals, AXI handshake is implicitly validated by proper terminations of `_done` and response correctness.  
-Waveforms show VALID/READY interactions.
-
-> The provided testbench covers basic directed tests. Future improvement could include constrained-random verification, SVA formal checks, partial write strobes, invalid address accesses, and long stress sequences.
-
 ---
 
 ## Limitations and Future Improvements
