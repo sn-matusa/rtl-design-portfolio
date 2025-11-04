@@ -233,25 +233,16 @@ Acts as the initiator of AXI transactions. It provides a user-friendly request i
 Protocol responder. Accepts address and data in any order for writes. Captures address/data and pulses `user_wr_en`. For reads, accepts AR and pulses `user_rd_en`. Returns responses and data. Only one write and one read transaction are handled at a time.
 
 ### Register File
-Simple synchronous RAM with byte mask writes. Provides OKAY/SLVERR. Outputs `0xDEADBEEF` for invalid address.
+Simple synchronous RAM with byte mask writes. Provides OKAY/SLVERR.
 
 ---
 
 ## Timing Diagrams
 
-Below are placeholders for timing diagrams illustrating the operation of the AXI4-Lite interface. These diagrams should show the relationship between the handshake signals and data for write and read transactions. (The user can insert waveform screenshots from simulations in place of the TODO items.)
-
 ### Write Transaction
 
-**TODO:** Insert waveform for write transaction here.
-
-(The write timing diagram should show signals such as `wr_req` to the master, `AWVALID/AWREADY`, `WVALID/WREADY`, and `BVALID/BREADY`, as well as `user_wr_done/user_wr_resp`, demonstrating a complete write handshake.)
 
 ### Read Transaction
-
-**TODO:** Insert waveform for read transaction here.
-
-(The read timing diagram should show `rd_req`, the `ARVALID/ARREADY` handshake, `RVALID/RREADY` with data, and the assertion of `user_rd_done` along with `user_rd_data` and `user_rd_resp` to illustrate a read operation.)
 
 ---
 
