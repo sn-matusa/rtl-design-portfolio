@@ -56,16 +56,12 @@ The top-level module connects the master, slave, and register file. It exposes a
 
 The AXI-Lite master module converts the simple user requests into AXI bus transactions. It has a user-side interface (matching the signals above) and an AXI bus interface that connects to the slave.
 
----
-
 ### **AXI Master External Ports**
 
 | Signal | Direction | Width | Description |
 |--------|-----------|-------|------------|
 | aclk | Input | 1-bit | AXI system clock (same as top-level `clk`). |
 | aresetn | Input | 1-bit | AXI reset (active-low, same as top-level `rst_n`). |
-
----
 
 ### **User Write Interface**
 
@@ -78,8 +74,6 @@ The AXI-Lite master module converts the simple user requests into AXI bus transa
 | wr_done | Output | 1-bit | Write transaction done (1-cycle pulse when complete). |
 | wr_resp | Output | 2-bit | Write response code (`BRESP`) from slave. |
 
----
-
 ### **User Read Interface**
 
 | Signal | Dir | Width | Description |
@@ -90,7 +84,6 @@ The AXI-Lite master module converts the simple user requests into AXI bus transa
 | rd_done | Output | 1-bit | Read transaction done (1-cycle pulse when data is valid). |
 | rd_resp | Output | 2-bit | Read response code (`RRESP`) from slave. |
 
----
 ### **AXI Write Address Channel** (master → slave)
 
 | Signal | Dir | Width | Description |
@@ -98,8 +91,6 @@ The AXI-Lite master module converts the simple user requests into AXI bus transa
 | awaddr | Output | 32-bit (param) | AXI write address. |
 | awvalid | Output | 1-bit | AXI write address valid. Master asserts to indicate a valid address/transaction. |
 | awready | Input | 1-bit | AXI write address ready (from slave). Indicates slave accepted the address. |
-
----
 
 ### **AXI Write Data Channel** (master → slave)
 
@@ -110,8 +101,6 @@ The AXI-Lite master module converts the simple user requests into AXI bus transa
 | wvalid | Output | 1-bit | AXI write data valid. Master asserts when write data is available. |
 | wready | Input | 1-bit | AXI write data ready (from slave). Indicates slave accepted the data. |
 
----
-
 ### **AXI Write Response Channel** (slave → master)
 
 | Signal | Dir | Width | Description |
@@ -120,8 +109,6 @@ The AXI-Lite master module converts the simple user requests into AXI bus transa
 | bvalid | Input | 1-bit | AXI write response valid from slave. |
 | bready | Output | 1-bit | AXI write response ready. Master asserts to accept/write response. |
 
----
-
 ### **AXI Read Address Channel** (master → slave)
 
 | Signal | Dir | Width | Description |
@@ -129,8 +116,6 @@ The AXI-Lite master module converts the simple user requests into AXI bus transa
 | araddr | Output | 32-bit (param) | AXI read address. |
 | arvalid | Output | 1-bit | AXI read address valid. Master asserts to request a read at araddr. |
 | arready | Input | 1-bit | AXI read address ready (from slave). Indicates slave accepted the read address. |
-
----
 
 ### **AXI Read Data Channel** (slave → master)
 
@@ -161,8 +146,6 @@ The AXI-Lite slave module receives AXI transactions and interfaces with the user
 | awvalid | Input | 1-bit | AXI write address valid from master. |
 | awready | Output | 1-bit | AXI write address ready. Slave asserts when it can accept an address. |
 
----
-
 ### AXI Write Data (slave input from master)
 
 | Signal | Dir | Width | Description |
@@ -172,8 +155,6 @@ The AXI-Lite slave module receives AXI transactions and interfaces with the user
 | wvalid | Input | 1-bit | AXI write data valid from master. |
 | wready | Output | 1-bit | AXI write data ready. Slave asserts when it can accept write data. |
 
----
-
 ### AXI Write Response (slave → master)
 
 | Signal | Dir | Width | Description |
@@ -182,8 +163,6 @@ The AXI-Lite slave module receives AXI transactions and interfaces with the user
 | bvalid | Output | 1-bit | AXI write response valid. Slave asserts when bresp is available. |
 | bready | Input | 1-bit | AXI write response ready from master. |
 
----
-
 ### AXI Read Address (slave input from master)
 
 | Signal | Dir | Width | Description |
@@ -191,8 +170,6 @@ The AXI-Lite slave module receives AXI transactions and interfaces with the user
 | araddr | Input | 32-bit (param) | AXI read address from master. |
 | arvalid | Input | 1-bit | AXI read address valid from master. |
 | arready | Output | 1-bit | AXI read address ready. Slave asserts when it can accept a read address. |
-
----
 
 ### AXI Read Data (slave → master)
 
@@ -203,8 +180,6 @@ The AXI-Lite slave module receives AXI transactions and interfaces with the user
 | rvalid | Output | 1-bit | AXI read data valid. Slave asserts when rdata (and rresp) are available. |
 | rready | Input | 1-bit | AXI read data ready from master. |
 
----
-
 ### Register File Interface (slave → RF)
 
 | Signal | Dir | Width | Description |
@@ -214,13 +189,15 @@ The AXI-Lite slave module receives AXI transactions and interfaces with the user
 | user_wr_strb | Output | 4-bit (param) | Write strobes to the register file (from wstrb). |
 | user_wr_en | Output | 1-bit | Write enable pulse to register file. Indicates a write operation should be performed at the captured address/data. This pulses high for one cycle when both address and data have been received. |
 | user_wr_resp | Input | 2-bit | Write response from register file logic. Typically OKAY or SLVERR. Forwarded to bresp. |
-
 | user_rd_addr | Output | 32-bit (param) | Read address to the register file (captured from araddr). |
 | user_rd_en | Output | 1-bit | Read enable pulse to register file. Indicates a read operation should be performed. |
 | user_rd_data | Input | 32-bit (param) | Read data from register file. Forwarded to rdata. |
 | user_rd_resp | Input | 2-bit | Read response from register file (OKAY or SLVERR). Forwarded to rresp. |
 
 > Note: The slave contains internal finite state machines for write and read transactions. It accepts write address/data in any order by using a handshake process (it will assert awready and/or wready accordingly to latch the address/data when they arrive). Once both address and data are received, the slave pulses user_wr_en to initiate the register file write and then issues the write response (bvalid/bresp). For reads, when an araddr is received (arvalid & arready), the slave triggers a read (user_rd_en) and, after getting the data/response from the register file, asserts rvalid with the rdata/rresp. The slave ensures only one write and one read transaction are handled at a time, as per AXI-Lite ordering rules.
+
+---
+
 ## Register File (`register_file`) Interface
 
 The register file module is a simple memory array that stores data for the AXI-Lite slave. It receives read/write commands from the slave and provides data and response codes. By default, the register file implements 16 registers of 32-bit width each (addressable in a 64-byte address space with 4-byte alignment per register).
@@ -244,6 +221,8 @@ The register file module is a simple memory array that stores data for the AXI-L
 ---
 
 ## RTL Structure
+
+<img width="1872" height="836" alt="image" src="https://github.com/user-attachments/assets/0a1b3c13-d75d-4c5b-836c-4aadf5a7c3fd" />
 
 The AXI4-Lite interface is organized into three main components connected in a pipeline: the master, the slave, and the register file. The top-level module (`axi_system_top`) instantiates and connects these components. Below is an outline of each component’s role and how they interact:
 
@@ -313,10 +292,6 @@ A timeout mechanism stops the simulation if any transaction fails to complete (d
 Even though the testbench drives user-level signals, AXI handshake is implicitly validated by proper terminations of `_done` and response correctness.  
 Waveforms show VALID/READY interactions.
 
-### Waveform Dumping
-Waveforms are dumped (e.g. via `$dumpfile/$dumpvars`) so the user can view AXI interactions in GTKWave.  
-Console logs print transaction events and data values.
-
 > The provided testbench covers basic directed tests. Future improvement could include constrained-random verification, SVA formal checks, partial write strobes, invalid address accesses, and long stress sequences.
 
 ---
@@ -345,5 +320,6 @@ The included testbench is a basic sanity test. More thorough verification (rando
 
 ---
 
-Overall, the current design provides a clear and modular example of an AXI4-Lite interface. Future improvements would depend on the intended use — whether to maintain it as a simple educational model or to evolve it into a more feature-complete bus interface with advanced capabilities.
+🧑‍💻 Author
+- Sebastian Mătușa
 
