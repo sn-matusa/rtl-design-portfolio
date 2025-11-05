@@ -86,7 +86,7 @@ module axi_lite_master #(
 );
     
     // =========================================================================
-    // Write FSM states (Mealy)
+    // Write FSM states 
     // =========================================================================
     localparam WR_IDLE = 3'b000;  // Idle, no transaction pending
     localparam WR_ADDR = 3'b001;  // Driving address only
@@ -98,7 +98,7 @@ module axi_lite_master #(
     reg [2:0] wr_state_next;      // Next write state (combinational logic)
     
     // =========================================================================
-    // Read FSM states (Mealy)
+    // Read FSM states 
     // =========================================================================
     localparam RD_IDLE = 2'b00;   // Idle, waiting for user request
     localparam RD_ADDR = 2'b01;   // Address phase (ARVALID active)
@@ -229,7 +229,7 @@ module axi_lite_master #(
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
-            wr_resp <= 2'b00;
+            wr_resp <= 2'b10;
         else if (bvalid && bready)
             wr_resp <= bresp; // Save BRESP from slave
     end
@@ -301,15 +301,15 @@ module axi_lite_master #(
     // Read done pulse generation
     // Delayed by 1 cycle to guarantee rd_data stable for user logic
     // =========================================================================
-    reg r_done_d;
+    //reg r_done_d;
 
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn) begin
             rd_done  <= 1'b0;
-            r_done_d <= 1'b0;
+           // r_done_d <= 1'b0;
         end else begin
-            r_done_d <= (rvalid && rready);
-            rd_done  <= r_done_d;
+            rd_done <= (rvalid && rready);
+           // rd_done  <= r_done_d;
         end
     end
     
@@ -329,7 +329,7 @@ module axi_lite_master #(
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn) begin
             rd_data <= {DATA_WIDTH{1'b0}};
-            rd_resp <= 2'b00;
+            rd_resp <= 2'b10;
         end else if (rvalid && rready) begin
             rd_data <= rdata;  // Store received data
             rd_resp <= rresp;  // Store RRESP code

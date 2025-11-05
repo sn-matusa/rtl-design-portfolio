@@ -194,7 +194,7 @@ module axi_lite_slave #(
                 awready = 1'b0;
                 wready  = 1'b0;
                 bvalid  = 1'b0;
-                bresp   = 2'b00;
+                bresp   = 2'b10;
             end
         endcase
     end
@@ -271,26 +271,26 @@ module axi_lite_slave #(
             R_IDLE: begin
                 arready = 1'b1;   // Ready to accept address
                 rvalid  = 1'b0;   // No data yet
-                rresp   = 2'b00;  // Default response
+                rresp   = 2'b10;  // Default response
             end
             
             R_DATA: begin
                 arready = 1'b0;   // Address phase done
                 
                 // Only assert RVALID if user logic posted a valid response
-                if (user_rd_resp_int == 2'b11) begin
+                if (user_rd_resp_int == 2'b00) begin
                     rvalid = 1'b1;
                     rresp  = user_rd_resp_int;
                 end else begin
                     rvalid = 1'b0; // Waiting for valid data
-                    rresp  = 2'b00;
+                    rresp  = 2'b10;
                 end
             end
             
             default: begin
                 arready = 1'b0;
                 rvalid  = 1'b0;
-                rresp   = 2'b00;
+                rresp   = 2'b10;
             end
         endcase
     end
@@ -331,7 +331,7 @@ module axi_lite_slave #(
     // =========================================================================
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn)
-            user_rd_resp_int <= 2'b00;
+            user_rd_resp_int <= 2'b10;
         else
             user_rd_resp_int <= user_rd_resp; // Move into internal flop
     end
