@@ -253,15 +253,12 @@ Simple synchronous RAM with byte mask writes. Provides OKAY/SLVERR.
 
 ## Simulation/Testbench
 
-The testbench is written to really push the AXI-Lite interface and behave more like real software talking to registers than a simple stimulus file. It drives read and write requests just like a CPU would, checks the responses, and keeps an internal model of the register file so every read can be verified automatically.
+The testbench provides a self-checking AXI-Lite verification environment that drives both read and write transactions and validates the DUT against a local reference model. It generates a clock and reset sequence, then executes a mix of directed and stress-style operations across a 16 × 32-bit memory map. Expected register values are tracked in an internal array (`expected_regs[0:15]`), with byte-level updates based on write strobes (`wr_strb`) and word-aligned addressing (`addr[5:2]`).
 
-It doesn't just do the boring “write then read” sequence — it also fires back-to-back transactions with no idle cycles, mixes reads and writes in the same clock, and tests byte-select strobes (WSTRB) to make sure partial writes work correctly. There’s also a random reset injection where the DUT is reset in the middle of an active transfer just to make sure it recovers cleanly and the internal state resets as expected.
+Stimulus tasks assert `wr_req` and `rd_req`, wait for the corresponding `wr_done` and `rd_done` handshakes, and record results. The test sequence includes back-to-back requests, concurrent read and write issuance, partial-byte writes, random reset assertion during traffic, and a small randomized stress phase. Each read is automatically compared against the expected mirror and logged as pass or fail, with counters tracking totals.
 
-All the interaction is wrapped into helper tasks (`axi_write`, `axi_read_verify`, etc.), so the actual flow reads nicely, almost like a high-level script. As each read completes, the testbench checks the value against the expected mirror-model; if something doesn’t line up, it logs a clean error message with the expected vs observed value. At the end it prints a summary with pass/fail counters.
+Console output includes detailed transaction logs and a final summary banner. A watchdog prevents simulation deadlock. The environment uses plain Verilog and minimal infrastructure, no UVM, making it compact and portable while still exercising core AXI-Lite behaviors and reset corner cases.
 
-There’s also a small stress section that throws random read/write patterns at the DUT to catch timing or handshake surprises. And just so simulations don’t hang by accident, there’s a watchdog timeout.
-
-Overall it’s a self-checking AXI-Lite testbench that exercises corner cases, concurrency, resets, partial writes, and back-to-back activity — more than enough to validate both the protocol behavior and the internal state handling of the design.
 
 Simulation output:
 ```text
