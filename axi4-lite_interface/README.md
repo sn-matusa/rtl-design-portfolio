@@ -253,6 +253,110 @@ Simple synchronous RAM with byte mask writes. Provides OKAY/SLVERR.
 
 ## Simulation/Testbench
 
+The testbench is written to really push the AXI-Lite interface and behave more like real software talking to registers than a simple stimulus file. It drives read and write requests just like a CPU would, checks the responses, and keeps an internal model of the register file so every read can be verified automatically.
+
+It doesn't just do the boring “write then read” sequence — it also fires back-to-back transactions with no idle cycles, mixes reads and writes in the same clock, and tests byte-select strobes (WSTRB) to make sure partial writes work correctly. There’s also a random reset injection where the DUT is reset in the middle of an active transfer just to make sure it recovers cleanly and the internal state resets as expected.
+
+All the interaction is wrapped into helper tasks (`axi_write`, `axi_read_verify`, etc.), so the actual flow reads nicely, almost like a high-level script. As each read completes, the testbench checks the value against the expected mirror-model; if something doesn’t line up, it logs a clean error message with the expected vs observed value. At the end it prints a summary with pass/fail counters.
+
+There’s also a small stress section that throws random read/write patterns at the DUT to catch timing or handshake surprises. And just so simulations don’t hang by accident, there’s a watchdog timeout.
+
+Overall it’s a self-checking AXI-Lite testbench that exercises corner cases, concurrency, resets, partial writes, and back-to-back activity — more than enough to validate both the protocol behavior and the internal state handling of the design.
+
+Simulation output:
+```text
+[45000] ========== RESET RELEASED ==========
+
+[65000] ===== TEST 1: Basic Operations =====
+[115000] WRITE @0x00 = 0xabcd1234 (strb=1111, resp=0)
+[175000] READ  @0x00 = 0xabcd1234 [PASS] (resp=0)
+[225000] WRITE @0x04 = 0x11111111 (strb=1111, resp=0)
+[275000] WRITE @0x08 = 0x22222222 (strb=1111, resp=0)
+[325000] WRITE @0x0c = 0x33333333 (strb=1111, resp=0)
+[385000] READ  @0x04 = 0x11111111 [PASS] (resp=0)
+[445000] READ  @0x08 = 0x22222222 [PASS] (resp=0)
+[505000] READ  @0x0c = 0x33333333 [PASS] (resp=0)
+
+[505000] ===== TEST 2: Back-to-Back =====
+
+[505000] --- Back-to-Back Writes Test ---
+[555000] WRITE @0x10 = 0xbb000000 (strb=1111, resp=0)
+[605000] WRITE @0x14 = 0xbb000001 (strb=1111, resp=0)
+[655000] WRITE @0x18 = 0xbb000002 (strb=1111, resp=0)
+[705000] WRITE @0x1c = 0xbb000003 (strb=1111, resp=0)
+
+[705000] --- Back-to-Back Reads Test ---
+[765000] READ  @0x10 = 0xbb000000 [PASS] (resp=0)
+[825000] READ  @0x14 = 0xbb000001 [PASS] (resp=0)
+[885000] READ  @0x18 = 0xbb000002 [PASS] (resp=0)
+[945000] READ  @0x1c = 0xbb000003 [PASS] (resp=0)
+
+[945000] ===== TEST 3: Simultaneous Rd/Wr =====
+[995000] WRITE @0x24 = 0xaaaaaaaa (strb=1111, resp=0)
+[1045000] WRITE @0x28 = 0xbbbbbbbb (strb=1111, resp=0)
+
+[1065000] --- Simultaneous Read/Write Test ---
+[1115000]   WRITE completed @0x2c = 0xcccccccc
+[1125000]   READ completed  @0x24 = 0xaaaaaaaa [PASS]
+
+[1125000] --- Simultaneous Read/Write Test ---
+[1175000]   WRITE completed @0x30 = 0xdddddddd
+[1185000]   READ completed  @0x28 = 0xbbbbbbbb [PASS]
+
+[1185000] ===== TEST 4: Partial Strobes =====
+
+[1185000] --- Partial Write Strobe Test ---
+[1235000] WRITE @0x20 = 0x12345678 (strb=1111, resp=0)
+[1295000] READ  @0x20 = 0x12345678 [PASS] (resp=0)
+[1345000] WRITE @0x20 = 0xxxxxxxaa (strb=0001, resp=0)
+[1405000] READ  @0x20 = 0x123456aa [PASS] (resp=0)
+[1455000] WRITE @0x20 = 0xxxbbxxxx (strb=0100, resp=0)
+[1515000] READ  @0x20 = 0x12bb56aa [PASS] (resp=0)
+[1565000] WRITE @0x20 = 0xddxxccxx (strb=1010, resp=0)
+[1625000] READ  @0x20 = 0xddbbccaa [PASS] (resp=0)
+
+[1625000] ===== TEST 5: Random Reset =====
+
+[1625000] --- Random Reset Test ---
+[1675000]   Asserting RESET during transaction
+[1705000]   Reset released
+[1775000] READ  @0x00 = 0x00000000 [PASS] (resp=0)
+[1835000] READ  @0x10 = 0x00000000 [PASS] (resp=0)
+
+[1865000] ===== TEST 6: Stress Test =====
+
+[1865000] --- Stress Test (20 operations) ---
+[1915000] WRITE @0xffffffe4 = 0xb1f05663 (strb=1111, resp=0)
+[1965000] WRITE @0x34 = 0xb2c28465 (strb=1111, resp=0)
+[2025000] READ  @0x04 = 0x00000000 [PASS] (resp=0)
+[2075000] WRITE @0x18 = 0x1e8dcd3d (strb=1111, resp=0)
+[2125000] WRITE @0x30 = 0x7cfde9f9 (strb=1111, resp=0)
+[2185000] READ  @0xffffffd4 = 0x00000000 [PASS] (resp=0)
+[2245000] READ  @0x14 = 0x00000000 [PASS] (resp=0)
+[2295000] WRITE @0xffffffc8 = 0x47ecdb8f (strb=1111, resp=0)
+[2355000] READ  @0xfffffff8 = 0x00000000 [PASS] (resp=0)
+[2415000] READ  @0xffffffd4 = 0x00000000 [PASS] (resp=0)
+[2475000] READ  @0xfffffff4 = 0xb2c28465 [PASS] (resp=0)
+[2525000] WRITE @0xffffffd4 = 0xb1ef6263 (strb=1111, resp=0)
+[2585000] READ  @0x00 = 0x00000000 [PASS] (resp=0)
+[2645000] READ  @0x28 = 0x00000000 [PASS] (resp=0)
+[2695000] WRITE @0xffffffd8 = 0x8983b813 (strb=1111, resp=0)
+[2745000] WRITE @0xffffffcc = 0x359fdd6b (strb=1111, resp=0)
+[2795000] WRITE @0xffffffc8 = 0xd7563eae (strb=1111, resp=0)
+[2845000] WRITE @0xfffffffc = 0x11844923 (strb=1111, resp=0)
+[2905000] READ  @0xffffffe8 = 0x00000000 [PASS] (resp=0)
+[2965000] READ  @0x08 = 0xd7563eae [PASS] (resp=0)
+
+========================================
+          TEST SUMMARY
+========================================
+Tests Passed: 26
+Tests Failed: 0
+
+*** ALL TESTS PASSED ***
+
+Simulation completed at 3015000
+```
 ---
 
 ## Limitations and Future Improvements
