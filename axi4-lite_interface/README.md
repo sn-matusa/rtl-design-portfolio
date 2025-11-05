@@ -239,10 +239,15 @@ Simple synchronous RAM with byte mask writes. Provides OKAY/SLVERR.
 
 ## Timing Diagrams
 
+<img width="1401" height="512" alt="image" src="https://github.com/user-attachments/assets/0a3e0272-19e8-4238-9750-9fcac920ef80" />
+
 ### Write Transaction
 
+<img width="1374" height="311" alt="image" src="https://github.com/user-attachments/assets/b98fcdfe-39e5-42ff-b488-3c2cc109002a" />
 
 ### Read Transaction
+
+<img width="1380" height="224" alt="image" src="https://github.com/user-attachments/assets/de4dcd0b-9dba-4bc4-b592-1ea675ac5a84" />
 
 ---
 
