@@ -200,23 +200,41 @@ The AXI-Lite slave module receives AXI transactions and interfaces with the user
 
 ## Register File (`register_file`) Interface
 
-The register file module is a simple memory array that stores data for the AXI-Lite slave. It receives read/write commands from the slave and provides data and response codes. By default, the register file implements 16 registers of 32-bit width each (addressable in a 64-byte address space with 4-byte alignment per register).
+The register file implements a simple parameterizable memory block used by the AXI-Lite slave. It receives **byte-addressed read and write requests** and internally maps addresses to 32-bit word indices by using bits `[5:2]` (assuming word-aligned accesses). The module supports byte-granular writes through `wr_strb`, and provides basic OKAY/SLVERR style response signaling.
 
-| Signal | Direction | Width | Description |
-|--------|----------|-------|-------------|
-| clk | Input | 1-bit | Clock (same as AXI clock, for synchronous memory operations). |
-| rst_n | Input | 1-bit | Reset (active-low). Clears register contents on reset. |
-| wr_addr | Input | ⌈log2(NUM_REGS)⌉ bits | Write address (register index). Top uses address bits `[5:2]` for 16 registers. |
-| wr_data | Input | 32-bit (param) | Write data to be stored in the register at wr_addr. |
-| wr_strb | Input | 4-bit (param) | Write strobes (byte enable signals). Each bit corresponds to one byte of wr_data. |
-| wr_en | Input | 1-bit | Write enable (pulse). |
-| wr_resp | Output | 2-bit | Write response (`OKAY` or `SLVERR`). |
-| rd_addr | Input | ⌈log2(NUM_REGS)⌉ bits | Read address (register index). |
-| rd_en | Input | 1-bit | Read enable (pulse). |
-| rd_data | Output | 32-bit (param) | Read data output. |
-| rd_resp | Output | 2-bit | Read response (`OKAY` or `SLVERR`). |
+By default, the design exposes **16 × 32-bit registers** (64 bytes total). All registers are reset to zero.
 
-> Note: On reset, the register file clears all registers to zero. The use of byte-write strobes means that partial writes will only update selected bytes of a register, leaving other bytes unchanged. The logic ensures that any out-of-bound address does not modify the register array and results in an error response. Since NUM_REGS is a power of 2 in this design, address validity is simply checked by bounds (if not power of 2, a comparison would be used).
+| Signal  | Dir | Width          | Description                                             |
+| ------- | --- | -------------- | ------------------------------------------------------- |
+| clk     | In  | 1              | Synchronous clock (shared with AXI interface)           |
+| rst_n   | In  | 1              | Active-low reset; clears all registers                  |
+| wr_addr | In  | `ADDR_WIDTH`   | Byte address of write operation; index = `wr_addr[5:2]` |
+| wr_data | In  | `DATA_WIDTH`   | Write data                                              |
+| wr_strb | In  | `DATA_WIDTH/8` | Byte enables for partial writes                         |
+| wr_en   | In  | 1              | Write enable pulse                                      |
+| wr_resp | Out | 2              | Write response (`OKAY`/`SLVERR`)                        |
+| rd_addr | In  | `ADDR_WIDTH`   | Byte address of read operation; index = `rd_addr[5:2]`  |
+| rd_en   | In  | 1              | Read enable pulse                                       |
+| rd_data | Out | `DATA_WIDTH`   | Read data output                                        |
+| rd_resp | Out | 2              | Read response (`OKAY`/`SLVERR`)                         |
+
+### Addressing
+
+Address decoding uses AXI-Lite’s natural byte addressing. Since registers are 32-bit wide, **bits [1:0] represent byte offset** and are ignored; **bits [5:2] select the register index**:
+
+```
+index = addr[5:2]
+```
+
+This enforces **word-aligned access** (0x00, 0x04, 0x08, …).
+
+### Behavior Notes
+
+* **Reset**: all registers cleared on reset
+* **Partial writes**: `wr_strb` allows selective byte updates to a register
+* **Write response**: `OKAY` when `wr_en=1`, otherwise `SLVERR` (simple form)
+* **Read path**: combinational, returns `OKAY` when `rd_en=1`
+* **Out-of-range access**: not explicitly guarded (NUM_REGS assumed power-of-2; address decoding handled at top level)
 
 ---
 
