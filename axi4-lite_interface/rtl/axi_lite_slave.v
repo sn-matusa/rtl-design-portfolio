@@ -186,6 +186,8 @@ module axi_lite_slave #(
             
             W_RESP: begin
                 // Drive BRESP to master
+		awready = 1'b0;
+      		wready  = 1'b0;
                 bvalid = 1'b1;
                 bresp  = user_wr_resp;
             end

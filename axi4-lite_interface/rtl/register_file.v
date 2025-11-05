@@ -13,6 +13,7 @@
 *   Rev 1.2 - Added simulation debug displays (Oct 2025)
 *   Rev 1.3 - Moved address decoding from top module (Nov 2025)
 *   Rev 1.4 - Simplified - removed intermediate variables (Nov 2025)
+*   Rev 1.5 - Changed wr_resp type assignment
 ******************************************************************************/
 
 module register_file #(
@@ -28,7 +29,7 @@ module register_file #(
     input                       wr_en,
     input   [DATA_WIDTH-1:0]    wr_data,
     input   [DATA_WIDTH/8-1:0]  wr_strb,
-    output  reg [1:0]           wr_resp,
+    output  [1:0]           wr_resp,
 
     // Read interface (byte address)
     input   [ADDR_WIDTH-1:0]    rd_addr,
@@ -47,11 +48,8 @@ module register_file #(
         if (!rst_n) begin
             for (i = 0; i < NUM_REGS; i = i + 1)
                 regs[i] <= {DATA_WIDTH{1'b0}};
-            wr_resp <= 2'b10;
         end else begin
             if (wr_en) begin
-                wr_resp <= 2'b00;  // OKAY response
-
                 // Direct indexing: wr_addr[5:2] extracts register index for 32-bit words
                 // Byte-granular write based on strobe
                 if (wr_strb[0]) regs[wr_addr[5:2]][ 7: 0] <= wr_data[ 7: 0];
@@ -61,6 +59,8 @@ module register_file #(
             end
         end
     end
+
+    assign wr_resp = wr_en ? 2'b00 : 2'b10;
 
     // ------------------------ READ ----------------------------
     always @(*) begin

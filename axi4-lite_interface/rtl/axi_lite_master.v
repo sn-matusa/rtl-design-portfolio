@@ -167,26 +167,36 @@ module axi_lite_master #(
     // Drives AWVALID / WVALID / BREADY based on state
     // =========================================================================
     always @(*) begin
-        awvalid = 1'b0; // Default: do not drive address
-        wvalid  = 1'b0; // Default: do not drive data
-        bready  = 1'b0; // Default: not ready for response
-        
+	awvalid = 1'b0; 
+     	wvalid  = 1'b0; 
+   	bready  = 1'b0; 
+
         case (wr_state)
+	    WR_IDLE: begin
+            	// defaults already 0
+		//awvalid = 1'b0; 
+    	 	//wvalid  = 1'b0; 
+   		//bready  = 1'b0; 
+            end
             WR_BOTH: begin
                 awvalid = 1'b1; // Drive both channels
                 wvalid  = 1'b1;
+  		bready  = 1'b1; // ready for BRESP as soon as it may come
             end
             
             WR_ADDR: begin
                 awvalid = 1'b1; // Only address phase active
+		bready  = 1'b1;  // safe to keep ready early
             end
             
             WR_DATA: begin
                 wvalid  = 1'b1; // Only data phase active
+		bready  = 1'b1; // safe to keep ready early
             end
             
             WR_RESP: begin
-                bready  = 1'b1; // Accept BRESP
+		 // address & data done; wait for BRESP
+           	 bready  = 1'b1; 
             end
             
             default: begin
@@ -287,7 +297,6 @@ module axi_lite_master #(
             
             RD_DATA: begin
                 arvalid = 1'b0; // Address phase done
-                // rready defaults to 0 unless asserted in RD_ADDR
             end
             
             default: begin
@@ -301,15 +310,11 @@ module axi_lite_master #(
     // Read done pulse generation
     // Delayed by 1 cycle to guarantee rd_data stable for user logic
     // =========================================================================
-    //reg r_done_d;
-
     always @(posedge aclk or negedge aresetn) begin
         if (!aresetn) begin
             rd_done  <= 1'b0;
-           // r_done_d <= 1'b0;
         end else begin
             rd_done <= (rvalid && rready);
-           // rd_done  <= r_done_d;
         end
     end
     
